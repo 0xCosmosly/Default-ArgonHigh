@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Gemini Auto-Select Pro
 // @namespace    gemini-auto-pro
-// @version      0.9
-// @description  Default Gemini web to Pro, then stop after your first manual mode change.
+// @version      1.0
+// @description  Default Gemini web to Pro on page load, then stop after the first successful cutover or any manual mode change.
 // @match        https://gemini.google.com/*
 // @run-at       document-idle
 // @grant        none
@@ -12,15 +12,14 @@
   'use strict';
 
   const PICKER_SELECTOR = 'button[aria-label="Open mode picker"]';
-  const MENUITEM_SELECTOR = 'button[role="menuitem"], [role="menuitem"]';
+  const MENUITEM_SELECTOR = 'button[role="menuitem"], [role="menuitem"], [role="option"]';
   const RETRY_MS = 1000;
   const ACTION_COOLDOWN_MS = 800;
-
   let inFlight = false;
   let lastActionAt = 0;
   let timer = null;
-  let hasReachedPro = false;
-  let manualControlTaken = false;
+  let autoDone = false;
+  let manualOverride = false;
 
   function textOf(el) {
     return (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -38,21 +37,33 @@
     return rect.width > 0 && rect.height > 0;
   }
 
+  function findPicker() {
+    const exactPicker = document.querySelector(PICKER_SELECTOR);
+    if (isVisible(exactPicker)) {
+      return exactPicker;
+    }
+
+    return Array.from(document.querySelectorAll('button, [role="button"]'))
+      .filter(isVisible)
+      .find((el) => {
+        const text = textOf(el);
+        const hasPopup = el.getAttribute('aria-haspopup') === 'menu' || el.hasAttribute('aria-expanded');
+        return (hasPopup || /^(fast|pro)\b/i.test(text)) && /^(fast|pro)\b/i.test(text);
+      });
+  }
+
   function currentModeIsPro() {
-    const picker = document.querySelector(PICKER_SELECTOR);
+    const picker = findPicker();
     return isVisible(picker) && /^pro\b/i.test(textOf(picker));
   }
 
   function isProMenuItem(el) {
     const text = textOf(el);
-    return /^pro\b/i.test(text) && (
-      /\b3\.1\s*pro\b/i.test(text) ||
-      /advanced math and code/i.test(text)
-    );
+    return /^pro\b/i.test(text);
   }
 
   function findProItem() {
-    return Array.from(document.querySelectorAll(MENUITEM_SELECTOR))
+    return Array.from(document.querySelectorAll(`${MENUITEM_SELECTOR}, button`))
       .filter(isVisible)
       .find(isProMenuItem);
   }
@@ -64,18 +75,14 @@
     }
   }
 
-  function resetSelection() {
-    hasReachedPro = false;
-    manualControlTaken = false;
-  }
-
   async function attemptSelection() {
-    if (manualControlTaken || inFlight) {
+    if (manualOverride || autoDone || inFlight) {
       return;
     }
 
     if (currentModeIsPro()) {
-      hasReachedPro = true;
+      autoDone = true;
+      stopSelection();
       return;
     }
 
@@ -88,7 +95,7 @@
     try {
       let proItem = findProItem();
       if (!proItem) {
-        const picker = document.querySelector(PICKER_SELECTOR);
+        const picker = findPicker();
         if (isVisible(picker)) {
           picker.click();
           lastActionAt = Date.now();
@@ -100,6 +107,11 @@
       if (proItem) {
         proItem.click();
         lastActionAt = Date.now();
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        if (currentModeIsPro()) {
+          autoDone = true;
+          stopSelection();
+        }
       }
     } finally {
       inFlight = false;
@@ -107,16 +119,20 @@
   }
 
   function schedule() {
-    resetSelection();
-    if (timer) {
-      window.clearInterval(timer);
+    if (manualOverride || autoDone) {
+      stopSelection();
+      return;
     }
-    timer = window.setInterval(attemptSelection, RETRY_MS);
+
+    if (!timer) {
+      timer = window.setInterval(attemptSelection, RETRY_MS);
+    }
+
     attemptSelection();
   }
 
   function noteManualOverride(event) {
-    if (!hasReachedPro || !event.isTrusted) {
+    if (!event.isTrusted) {
       return;
     }
 
@@ -125,11 +141,18 @@
       return;
     }
 
-    const control = target.closest(`${PICKER_SELECTOR}, ${MENUITEM_SELECTOR}`);
-    if (control) {
-      manualControlTaken = true;
-      stopSelection();
+    const modeItem = target.closest(MENUITEM_SELECTOR);
+    if (!(modeItem instanceof Element) || !isVisible(modeItem)) {
+      return;
     }
+
+    const text = textOf(modeItem);
+    if (!/^(fast|pro)\b/i.test(text)) {
+      return;
+    }
+
+    manualOverride = true;
+    stopSelection();
   }
 
   function handleRouteChange() {
@@ -166,7 +189,7 @@
     document.addEventListener('pointerdown', noteManualOverride, true);
     document.addEventListener('click', noteManualOverride, true);
     window.addEventListener('popstate', handleRouteChange);
-    window.addEventListener('focus', attemptSelection);
+    window.addEventListener('focus', schedule);
 
     schedule();
   }

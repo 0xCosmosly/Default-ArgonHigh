@@ -2,24 +2,26 @@
 
 A Tampermonkey userscript for `gemini.google.com` that switches the mode picker to `Pro` when Gemini loads.
 
-After the page reaches `Pro`, the script stops enforcing the setting so you can manually switch to `Fast` for the current session.
+After the page reaches `Pro`, the script stops enforcing the setting so you can manually switch to `Fast` for the current page session.
 
 ## What it does
 
 - Opens Gemini's mode picker after page load
 - Selects the `Pro` option when it is available
-- Stops interfering after you manually change the mode
+- Stops interfering after it reaches `Pro` or after you manually change the mode
 
 ## What it does not do
 
 - It does not bypass Gemini plan limits or access controls
 - It does not persist a server-side account setting
+- It does not support Gemini loaded inside sidebar or panel browser extensions
 - It may break if Google changes Gemini's web UI
 
 ## Requirements
 
 - A browser with the Tampermonkey extension installed
 - Access to Gemini's `Pro` mode on your Google account
+- A normal top-level Gemini tab at `https://gemini.google.com/*`
 
 ## Installation
 
@@ -32,9 +34,8 @@ After the page reaches `Pro`, the script stops enforcing the setting so you can 
 
 ### Option 2: Install from GitHub after publishing
 
-1. Push this repository to GitHub.
-2. Open the raw version of `gemini-auto-pro.user.js` in your browser.
-3. Let Tampermonkey prompt you to install it.
+1. Open the raw version of `gemini-auto-pro.user.js` from this repository in your browser.
+2. Let Tampermonkey prompt you to install it.
 
 ## Behavior
 
@@ -55,6 +56,8 @@ After the page reaches `Pro`, the script stops enforcing the setting so you can 
 
 ## Limitations
 
+- This script is intended for the normal Gemini web app in a regular browser tab.
+- Sidebar, panel, or iframe-hosted Gemini sessions are not supported.
 - Gemini's DOM can change without notice.
 - The current selector logic targets the mode picker exposed by Gemini's current web UI.
 - If Google renames the picker or the `Pro` option text, the script will need an update.
