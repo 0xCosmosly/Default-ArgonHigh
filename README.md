@@ -61,3 +61,7 @@ After the page reaches `Pro`, the script stops enforcing the setting so you can 
 - Gemini's DOM can change without notice.
 - The current selector logic targets the mode picker exposed by Gemini's current web UI.
 - If Google renames the picker or the `Pro` option text, the script will need an update.
+
+## License
+
+MIT. See `LICENSE`.
