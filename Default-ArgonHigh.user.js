@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Default-ArgonHigh
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  Automatically switches Gemini to 4 Argon at High thinking level on launch, and respects manual changes.
 // @author       0xCosmosly
 // @match        https://gemini.google.com/*
@@ -21,7 +21,7 @@
   // Ground truth:    the picker button's aria-label, e.g. "currently Argon High"
   // -----------------------------------------------------------------------
 
-  const RETRY_MS = 800;
+  const RETRY_MS = 400;
   const STEP_SETTLE_MS = 450;
   const MAX_ATTEMPTS = 8;
   const SUCCESS = /currently\s+argon\s+high/i;
@@ -45,6 +45,20 @@
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Poll instead of sleeping a fixed amount: the menu usually renders in well
+  // under 100 ms, so a fixed 450 ms wait just makes the user watch it open.
+  async function waitFor(fn, timeout = 900, interval = 40) {
+    const end = Date.now() + timeout;
+    for (;;) {
+      try {
+        const v = fn();
+        if (v) return v;
+      } catch (e) { /* keep polling */ }
+      if (Date.now() >= end) return null;
+      await sleep(interval);
+    }
+  }
 
   function pickerButton() {
     return [...document.querySelectorAll('button')]
@@ -86,18 +100,13 @@
   }
 
   // The Low/Medium/High rows only exist once "Thinking level" is opened. If they
-  // are missing, open it — and wait for the rows to actually render before
-  // giving up, because the submenu animates in.
+  // are missing, open it and wait for the rows to render (poll, not sleep).
   async function ensureLevelRows() {
     if (levelItems().length) return true;
     const tl = thinkingItem();
     if (!tl) return false;
     tl.click();
-    for (let i = 0; i < 4; i++) {
-      await sleep(STEP_SETTLE_MS);
-      if (levelItems().length) return true;
-    }
-    return false;
+    return !!(await waitFor(() => levelItems().length, 900));
   }
 
   async function openMenu() {
@@ -105,8 +114,7 @@
     const b = pickerButton();
     if (!isVisible(b)) return false;
     b.click();
-    await sleep(STEP_SETTLE_MS);
-    return menuOpen();
+    return !!(await waitFor(menuOpen, 900));
   }
 
   async function apply() {
@@ -123,10 +131,10 @@
       // Step 1 — make sure the Argon mode is selected.
       if (!HAS_ARGON.test(currentLabel())) {
         if (!(await openMenu())) return;
-        const argon = argonItem();
+        const argon = await waitFor(argonItem, 900);
         if (argon) {
           argon.click();
-          await sleep(STEP_SETTLE_MS);
+          await waitFor(() => HAS_ARGON.test(currentLabel()), 900);
         }
         if (!HAS_ARGON.test(currentLabel())) return; // let the next tick retry
       }
@@ -135,10 +143,10 @@
       if (!HAS_HIGH.test(currentLabel())) {
         if (!(await openMenu())) return;
         if (!(await ensureLevelRows())) return; // let the next tick retry
-        const hi = highItem();
+        const hi = await waitFor(highItem, 900);
         if (hi) {
           hi.click();
-          await sleep(STEP_SETTLE_MS);
+          await waitFor(() => SUCCESS.test(currentLabel()), 900);
         }
       }
 
