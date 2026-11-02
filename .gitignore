@@ -3,3 +3,6 @@
 *.jpeg
 *.webp
 .DS_Store
+
+# keep README images
+!docs/*.png
