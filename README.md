@@ -6,6 +6,8 @@ Gemini defaults to a fast, low-effort model. If you want the strongest reasoning
 
 > **Short answer:** install this userscript in Tampermonkey, open `gemini.google.com`, and Gemini will already be on **Argon High**. If you switch modes yourself, it backs off and leaves you alone.
 
+![Default Argon High — Gemini opens on 4 Argon at High thinking level](docs/screenshot.png)
+
 ---
 
 ## What it does
