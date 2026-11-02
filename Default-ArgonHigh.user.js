@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Default-ArgonHigh
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Automatically switches Gemini to 4 Argon at High thinking level on launch, and respects manual changes.
 // @author       0xCosmosly
 // @homepageURL  https://github.com/0xCosmosly/Default-ArgonHigh
