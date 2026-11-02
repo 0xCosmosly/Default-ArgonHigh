@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Default-ArgonHigh
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Automatically switches Gemini to 4 Argon at High thinking level on launch, and respects manual changes.
 // @author       0xCosmosly
 // @match        https://gemini.google.com/*
@@ -22,7 +22,8 @@
   // -----------------------------------------------------------------------
 
   const RETRY_MS = 800;
-  const STEP_SETTLE_MS = 350;
+  const STEP_SETTLE_MS = 450;
+  const MAX_ATTEMPTS = 8;
   const SUCCESS = /currently\s+argon\s+high/i;
   const HAS_ARGON = /argon/i;
   const HAS_HIGH = /\bhigh\b/i;
@@ -31,6 +32,7 @@
   let autoDone = false;
   let manualOverride = false;
   let timer = null;
+  let attempts = 0;
 
   const textOf = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
 
@@ -65,10 +67,12 @@
     return modeItems().find((el) => HAS_ARGON.test(textOf(el.querySelector('.label') || el)));
   }
 
+  // "Thinking level" is NOT reliably classed `expandable` — the class comes and
+  // goes between renders. Match it by its label text instead.
   function thinkingItem() {
-    return [...document.querySelectorAll('gem-menu-item.expandable')]
-      .filter(isVisible)
-      .find((el) => /thinking level/i.test(textOf(el)));
+    return [...document.querySelectorAll('gem-menu-item')]
+      .filter((el) => !el.hasAttribute('data-mode-id') && isVisible(el))
+      .find((el) => /^thinking level\b/i.test(textOf(el)));
   }
 
   function levelItems() {
@@ -79,6 +83,21 @@
 
   function highItem() {
     return levelItems().find((el) => /^high\b/i.test(textOf(el)));
+  }
+
+  // The Low/Medium/High rows only exist once "Thinking level" is opened. If they
+  // are missing, open it — and wait for the rows to actually render before
+  // giving up, because the submenu animates in.
+  async function ensureLevelRows() {
+    if (levelItems().length) return true;
+    const tl = thinkingItem();
+    if (!tl) return false;
+    tl.click();
+    for (let i = 0; i < 4; i++) {
+      await sleep(STEP_SETTLE_MS);
+      if (levelItems().length) return true;
+    }
+    return false;
   }
 
   async function openMenu() {
@@ -115,11 +134,7 @@
       // Step 2 — force the thinking level to High.
       if (!HAS_HIGH.test(currentLabel())) {
         if (!(await openMenu())) return;
-        const tl = thinkingItem();
-        if (tl && !tl.classList.contains('expanded')) {
-          tl.click();
-          await sleep(STEP_SETTLE_MS);
-        }
+        if (!(await ensureLevelRows())) return; // let the next tick retry
         const hi = highItem();
         if (hi) {
           hi.click();
@@ -130,10 +145,25 @@
       if (isDone()) {
         autoDone = true;
         stop();
+        return;
+      }
+
+      // Give up cleanly rather than thrashing: close the menu and stand down
+      // after a few failed rounds, so the page is never left stuck open.
+      if (++attempts >= MAX_ATTEMPTS) {
+        closeMenu();
+        autoDone = true;
+        stop();
       }
     } finally {
       inFlight = false;
     }
+  }
+
+  function closeMenu() {
+    if (!menuOpen()) return;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.body.click();
   }
 
   function stop() {
